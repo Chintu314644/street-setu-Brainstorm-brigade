@@ -1,0 +1,8 @@
+{
+  "name": "Street-Setu",
+  "description": "Hyper-local GIS Emergency Obstacle Tracker for 2026. Real-time community reporting to save lives by rerouting emergency vehicles.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": []
+}
