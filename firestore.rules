@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(data) {
+      return isSignedIn() && data.reporterId == request.auth.uid;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Obstacle validation helper
+    function isValidObstacle(data) {
+      return data.keys().hasAll(['type', 'severity', 'description', 'location', 'reporterId', 'status', 'createdAt'])
+        && data.keys().size() >= 7 && data.keys().size() <= 8
+        && data.type in ['Wedding Tent', 'Illegal Parking', 'Construction', 'Accident', 'Water-logging', 'Other']
+        && data.severity in ['Low', 'Medium', 'High']
+        && data.description is string && data.description.size() <= 1000
+        && data.location is map 
+        && data.location.lat is number && data.location.lng is number
+        && data.reporterId == request.auth.uid
+        && data.status in ['Active', 'Cleared']
+        && data.createdAt == request.time;
+    }
+
+    match /obstacles/{obstacleId} {
+      allow read: if true; // Publicly readable for GIS safety
+      
+      allow create: if isSignedIn() 
+        && isValidId(obstacleId)
+        && isValidObstacle(incoming());
+        
+      allow update: if isSignedIn()
+        && isValidId(obstacleId)
+        // Only owner can update, and must maintain integrity
+        && isOwner(existing())
+        && (
+          // Action: Mark as cleared
+          (incoming().diff(existing()).affectedKeys().hasOnly(['status']) && incoming().status == 'Cleared')
+          // Action: Edit description
+          || (incoming().diff(existing()).affectedKeys().hasOnly(['description']))
+        )
+        // Re-validate the entire object except createdAt (which is immutable)
+        && incoming().createdAt == existing().createdAt
+        && incoming().reporterId == existing().reporterId;
+
+      allow delete: if false; // Immutability for history
+    }
+    
+    // Test collection for connection test
+    match /test/connection {
+      allow get: if true;
+    }
+  }
+}
